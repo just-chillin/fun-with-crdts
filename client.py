@@ -1,15 +1,18 @@
 import curses
-from curses import wrapper
+import asyncio
+from httpx_ws import aconnect_ws
+from pycrdt import Doc, Text
+from pycrdt import Provider
+from pycrdt.websocket.websocket import HttpxWebsocket
 
-def main(stdscr: curses.window):
-    stdscr.keypad(True)
-    curses.noecho()
 
-    buffer = ""
+async def app(stdscr: curses.window, ydoc: Doc):
+    buffer = ydoc.get("text", type=Text)
     y, x = 0, 0
+    loop = asyncio.get_event_loop()
 
     def lines() -> list[str]:
-        return buffer.split("\n")
+        return str(buffer).split("\n")
 
     def cursor_to_offset() -> int:
         ls = lines()
@@ -25,8 +28,9 @@ def main(stdscr: curses.window):
                 stdscr.addstr(i, 0, line[:max_x])
 
         stdscr.move(y, x)
+        stdscr.refresh()
 
-        key = stdscr.getch()
+        key = await loop.run_in_executor(None, stdscr.getch)
         ls = lines()
 
         if key == curses.KEY_UP:
@@ -50,7 +54,7 @@ def main(stdscr: curses.window):
         elif key in (curses.KEY_BACKSPACE, 127):
             offset = cursor_to_offset()
             if offset > 0:
-                buffer = buffer[: offset - 1] + buffer[offset:]
+                buffer.delete(offset - 1, 1)
                 if x > 0:
                     x -= 1
                 else:
@@ -58,14 +62,36 @@ def main(stdscr: curses.window):
                     x = len(lines()[y])
         elif key in (curses.KEY_ENTER, 10, 13):
             offset = cursor_to_offset()
-            buffer = buffer[:offset] + "\n" + buffer[offset:]
+            buffer.insert(offset, "\n")
             y += 1
             x = 0
         elif 32 <= key <= 126:
             offset = cursor_to_offset()
-            buffer = buffer[:offset] + chr(key) + buffer[offset:]
+            buffer.insert(offset, chr(key))
             x += 1
 
 
+async def client():
+    ydoc = Doc()
+    room_name = "my-roomname"
+
+    stdscr = curses.initscr()
+    curses.noecho()
+    curses.cbreak()
+    stdscr.keypad(True)
+
+    try:
+        async with (
+            aconnect_ws(f"http://localhost:1234/{room_name}") as websocket,
+            Provider(ydoc, HttpxWebsocket(websocket, room_name)),
+        ):
+            await app(stdscr, ydoc)
+    finally:
+        curses.nocbreak()
+        stdscr.keypad(False)
+        curses.echo()
+        curses.endwin()
+
+
 if __name__ == "__main__":
-    wrapper(main)
+    asyncio.run(client())

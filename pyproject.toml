@@ -5,6 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "asyncio>=4.0.0",
+    "httpx-ws>=0.9.0",
+    "hypercorn>=0.18.0",
     "pycrdt>=0.14.1",
     "pycrdt-websocket>=0.16.3",
 ]
